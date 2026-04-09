@@ -60,8 +60,8 @@ export function CentralSkillsView() {
     setIsDialogOpen(true);
   }
 
-  async function handleInstall(skillId: string, agentIds: string[]) {
-    await installSkill(skillId, agentIds);
+  async function handleInstall(skillId: string, agentIds: string[], method: string) {
+    await installSkill(skillId, agentIds, method);
     // Refresh sidebar counts after install.
     await rescan();
   }

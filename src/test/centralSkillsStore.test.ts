@@ -139,11 +139,14 @@ describe("centralSkillsStore", () => {
       .mockResolvedValueOnce(batchResult) // batch_install_to_agents
       .mockResolvedValueOnce(updatedSkills); // get_central_skills (refresh)
 
-    await useCentralSkillsStore.getState().installSkill("frontend-design", ["cursor"]);
+    await useCentralSkillsStore
+      .getState()
+      .installSkill("frontend-design", ["cursor"], "symlink");
 
     expect(invoke).toHaveBeenCalledWith("batch_install_to_agents", {
       skill_id: "frontend-design",
       agent_ids: ["cursor"],
+      method: "symlink",
     });
     // Refresh call
     expect(invoke).toHaveBeenCalledWith("get_central_skills");
@@ -151,6 +154,23 @@ describe("centralSkillsStore", () => {
     const state = useCentralSkillsStore.getState();
     expect(state.skills).toEqual(updatedSkills);
     expect(state.isInstalling).toBe(false);
+  });
+
+  it("forwards 'copy' method to batch_install_to_agents", async () => {
+    const batchResult = { succeeded: ["cursor"], failed: [] };
+    vi.mocked(invoke)
+      .mockResolvedValueOnce(batchResult)
+      .mockResolvedValueOnce(mockSkills);
+
+    await useCentralSkillsStore
+      .getState()
+      .installSkill("frontend-design", ["cursor"], "copy");
+
+    expect(invoke).toHaveBeenCalledWith("batch_install_to_agents", {
+      skill_id: "frontend-design",
+      agent_ids: ["cursor"],
+      method: "copy",
+    });
   });
 
   it("returns the BatchInstallResult from installSkill", async () => {
@@ -161,7 +181,7 @@ describe("centralSkillsStore", () => {
 
     const result = await useCentralSkillsStore
       .getState()
-      .installSkill("frontend-design", ["cursor"]);
+      .installSkill("frontend-design", ["cursor"], "symlink");
 
     expect(result).toEqual(batchResult);
   });
@@ -170,7 +190,9 @@ describe("centralSkillsStore", () => {
     vi.mocked(invoke).mockRejectedValueOnce(new Error("symlink failed"));
 
     await expect(
-      useCentralSkillsStore.getState().installSkill("frontend-design", ["cursor"])
+      useCentralSkillsStore
+        .getState()
+        .installSkill("frontend-design", ["cursor"], "symlink")
     ).rejects.toThrow("symlink failed");
 
     const state = useCentralSkillsStore.getState();

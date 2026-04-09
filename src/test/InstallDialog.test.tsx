@@ -152,7 +152,50 @@ describe("InstallDialog", () => {
     await waitFor(() => {
       expect(mockOnInstall).toHaveBeenCalledWith(
         "frontend-design",
-        expect.any(Array)
+        expect.any(Array),
+        expect.any(String)
+      );
+    });
+  });
+
+  it("passes 'symlink' method to onInstall by default", async () => {
+    mockOnInstall.mockResolvedValueOnce(undefined);
+
+    renderDialog();
+    const confirmBtn = screen.getByRole("button", {
+      name: /Install to .* platforms?/i,
+    });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockOnInstall).toHaveBeenCalledWith(
+        "frontend-design",
+        expect.any(Array),
+        "symlink"
+      );
+    });
+  });
+
+  it("passes 'copy' method to onInstall when copy is selected", async () => {
+    mockOnInstall.mockResolvedValueOnce(undefined);
+
+    renderDialog();
+
+    // Select the Copy radio button
+    const copyRadio = screen.getByText("Copy").closest("label");
+    expect(copyRadio).not.toBeNull();
+    fireEvent.click(copyRadio!);
+
+    const confirmBtn = screen.getByRole("button", {
+      name: /Install to .* platforms?/i,
+    });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockOnInstall).toHaveBeenCalledWith(
+        "frontend-design",
+        expect.any(Array),
+        "copy"
       );
     });
   });

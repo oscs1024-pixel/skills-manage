@@ -15,7 +15,8 @@ interface CentralSkillsState {
   loadCentralSkills: () => Promise<void>;
   installSkill: (
     skillId: string,
-    agentIds: string[]
+    agentIds: string[],
+    method: string
   ) => Promise<BatchInstallResult>;
 }
 
@@ -49,12 +50,13 @@ export const useCentralSkillsStore = create<CentralSkillsState>((set) => ({
    * Install a skill to one or more agents. Refreshes the skill list after
    * a successful (or partial) install so link status icons update.
    */
-  installSkill: async (skillId, agentIds) => {
+  installSkill: async (skillId, agentIds, method) => {
     set({ isInstalling: true, error: null });
     try {
       const result = await invoke<BatchInstallResult>("batch_install_to_agents", {
         skill_id: skillId,
         agent_ids: agentIds,
+        method,
       });
 
       // Refresh central skills to get updated link status.

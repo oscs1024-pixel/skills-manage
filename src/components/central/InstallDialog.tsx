@@ -26,7 +26,7 @@ interface InstallDialogProps {
   skill: SkillWithLinks | null;
   /** All agents (the 'central' agent will be filtered out). */
   agents: AgentWithStatus[];
-  onInstall: (skillId: string, agentIds: string[]) => Promise<void>;
+  onInstall: (skillId: string, agentIds: string[], method: InstallMethod) => Promise<void>;
 }
 
 // ─── InstallDialog ────────────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ export function InstallDialog({
     setIsLoading(true);
     setError(null);
     try {
-      await onInstall(skill.id, agentIds);
+      await onInstall(skill.id, agentIds, installMethod);
       onOpenChange(false);
     } catch (err) {
       setError(String(err));

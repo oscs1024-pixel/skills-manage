@@ -81,6 +81,44 @@ fn create_symlink(_target: &Path, _link: &Path) -> Result<(), String> {
     Err("Symlink creation is only supported on Unix systems".to_string())
 }
 
+// ─── Recursive Directory Copy ─────────────────────────────────────────────────
+
+/// Recursively copy a directory tree from `src` to `dst`.
+///
+/// `dst` must not exist prior to the call (or may be an empty dir).
+/// The behaviour mirrors `cp -r src dst` on Unix.
+fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst)
+        .map_err(|e| format!("Failed to create destination directory '{}': {}", dst.display(), e))?;
+
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| format!("Failed to read source directory '{}': {}", src.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("Failed to determine file type: {}", e))?;
+
+        if file_type.is_dir() {
+            copy_dir_all(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path).map_err(|e| {
+                format!(
+                    "Failed to copy '{}' -> '{}': {}",
+                    src_path.display(),
+                    dst_path.display(),
+                    e
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
 // ─── Core Logic ───────────────────────────────────────────────────────────────
 
 /// Core install logic, separated from the Tauri layer for testability.
@@ -175,13 +213,98 @@ pub async fn install_skill_to_agent_impl(
     })
 }
 
+/// Core copy-install logic — copies the skill directory instead of symlinking.
+///
+/// Copies `central.global_skills_dir/<skill_id>` recursively into
+/// `agent.global_skills_dir/<skill_id>`. Existing symlinks at the target are
+/// replaced; existing real directories cause an error.
+pub async fn install_skill_to_agent_copy_impl(
+    pool: &DbPool,
+    skill_id: &str,
+    agent_id: &str,
+) -> Result<InstallResult, String> {
+    // Guard: cannot install to the central agent itself.
+    if agent_id == "central" {
+        return Err("Cannot install a skill to the central agent itself".to_string());
+    }
+
+    // 1. Look up the target agent.
+    let agent = db::get_agent_by_id(pool, agent_id)
+        .await?
+        .ok_or_else(|| format!("Agent '{}' not found", agent_id))?;
+
+    // 2. Look up the central agent to determine the canonical root.
+    let central = db::get_agent_by_id(pool, "central")
+        .await?
+        .ok_or_else(|| "Central agent not found in database".to_string())?;
+
+    let canonical_dir = PathBuf::from(&central.global_skills_dir).join(skill_id);
+
+    // 3. Verify that the canonical skill directory exists with a SKILL.md.
+    if !canonical_dir.join("SKILL.md").exists() {
+        return Err(format!(
+            "Canonical skill '{}' not found at '{}'",
+            skill_id,
+            canonical_dir.display()
+        ));
+    }
+
+    // 4. Compute target location.
+    let agent_dir = PathBuf::from(&agent.global_skills_dir);
+    let target_path = agent_dir.join(skill_id);
+
+    // 5. Ensure the agent's skills directory exists.
+    std::fs::create_dir_all(&agent_dir)
+        .map_err(|e| format!("Failed to create agent skills directory: {}", e))?;
+
+    // 6. Handle any existing entry at the target path.
+    match std::fs::symlink_metadata(&target_path) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            // Remove stale symlink so we can replace it with a real copy.
+            std::fs::remove_file(&target_path)
+                .map_err(|e| format!("Failed to remove existing symlink: {}", e))?;
+        }
+        Ok(meta) if meta.is_dir() => {
+            return Err(format!(
+                "A real directory already exists at '{}'. Refusing to overwrite.",
+                target_path.display()
+            ));
+        }
+        Ok(_) => {
+            return Err(format!(
+                "A file already exists at '{}'. Refusing to overwrite.",
+                target_path.display()
+            ));
+        }
+        Err(_) => {} // Path does not exist — proceed normally.
+    }
+
+    // 7. Recursively copy the canonical skill directory.
+    copy_dir_all(&canonical_dir, &target_path)?;
+
+    // 8. Persist the installation record.
+    let installation = SkillInstallation {
+        skill_id: skill_id.to_string(),
+        agent_id: agent_id.to_string(),
+        installed_path: target_path.to_string_lossy().into_owned(),
+        link_type: "copy".to_string(),
+        symlink_target: None,
+    };
+    db::upsert_skill_installation(pool, &installation).await?;
+
+    Ok(InstallResult {
+        symlink_path: target_path.to_string_lossy().into_owned(),
+    })
+}
+
 /// Core uninstall logic, separated from the Tauri layer for testability.
 ///
 /// Removes the symlink at `agent.global_skills_dir/<skill_id>` and deletes the
 /// corresponding `skill_installations` record.
 ///
-/// Returns an error if the path exists but is **not** a symlink (refuses to
-/// delete real directories).
+/// For symlinked skills: removes the symlink.
+/// For copied skills: removes the copied directory (tracked in the DB as link_type='copy').
+/// Refuses to delete real directories not tracked as copies in the DB.
 pub async fn uninstall_skill_from_agent_impl(
     pool: &DbPool,
     skill_id: &str,
@@ -192,19 +315,40 @@ pub async fn uninstall_skill_from_agent_impl(
         .await?
         .ok_or_else(|| format!("Agent '{}' not found", agent_id))?;
 
-    // 2. Compute the expected symlink location.
-    let symlink_path = PathBuf::from(&agent.global_skills_dir).join(skill_id);
+    // 2. Compute the expected install location.
+    let install_path = PathBuf::from(&agent.global_skills_dir).join(skill_id);
 
-    // 3. Inspect the entry at that path.
-    match std::fs::symlink_metadata(&symlink_path) {
+    // 3. Look up the installation record to determine how it was installed.
+    let installations = db::get_skill_installations(pool, skill_id).await?;
+    let record = installations
+        .iter()
+        .find(|r| r.agent_id == agent_id);
+    let link_type = record.map(|r| r.link_type.as_str()).unwrap_or("symlink");
+
+    // 4. Inspect the entry at that path and remove it appropriately.
+    match std::fs::symlink_metadata(&install_path) {
         Ok(meta) if meta.file_type().is_symlink() => {
-            std::fs::remove_file(&symlink_path)
+            // Always safe to remove symlinks.
+            std::fs::remove_file(&install_path)
                 .map_err(|e| format!("Failed to remove symlink: {}", e))?;
+        }
+        Ok(meta) if meta.is_dir() => {
+            // Only remove real directories that were explicitly installed as copies.
+            if link_type == "copy" {
+                std::fs::remove_dir_all(&install_path).map_err(|e| {
+                    format!("Failed to remove copied skill directory: {}", e)
+                })?;
+            } else {
+                return Err(format!(
+                    "Path '{}' exists but is not a symlink. Refusing to delete.",
+                    install_path.display()
+                ));
+            }
         }
         Ok(_) => {
             return Err(format!(
                 "Path '{}' exists but is not a symlink. Refusing to delete.",
-                symlink_path.display()
+                install_path.display()
             ));
         }
         Err(_) => {
@@ -212,7 +356,7 @@ pub async fn uninstall_skill_from_agent_impl(
         }
     }
 
-    // 4. Remove the installation record from the database.
+    // 5. Remove the installation record from the database.
     db::delete_skill_installation(pool, skill_id, agent_id).await?;
 
     Ok(())
@@ -242,19 +386,31 @@ pub async fn uninstall_skill_from_agent(
 
 /// Tauri command: install a skill to multiple agents in one call.
 ///
-/// Each agent install is attempted independently; failures are collected in the
-/// `failed` list rather than short-circuiting the entire batch.
+/// `method` must be either `"symlink"` (default, creates a relative symlink) or
+/// `"copy"` (copies the skill directory). Each agent install is attempted
+/// independently; failures are collected in the `failed` list rather than
+/// short-circuiting the entire batch.
 #[tauri::command]
 pub async fn batch_install_to_agents(
     state: State<'_, AppState>,
     skill_id: String,
     agent_ids: Vec<String>,
+    method: Option<String>,
 ) -> Result<BatchInstallResult, String> {
+    let method = method.as_deref().unwrap_or("symlink");
     let mut succeeded = Vec::new();
     let mut failed = Vec::new();
 
     for agent_id in &agent_ids {
-        match install_skill_to_agent_impl(&state.db, &skill_id, agent_id).await {
+        let install_result = match method {
+            "copy" => {
+                install_skill_to_agent_copy_impl(&state.db, &skill_id, agent_id).await
+            }
+            _ => {
+                install_skill_to_agent_impl(&state.db, &skill_id, agent_id).await
+            }
+        };
+        match install_result {
             Ok(_) => succeeded.push(agent_id.clone()),
             Err(e) => failed.push(FailedInstall {
                 agent_id: agent_id.clone(),
@@ -718,5 +874,281 @@ mod tests {
         }
 
         BatchInstallResult { succeeded, failed }
+    }
+
+    // ── install_skill_to_agent_copy_impl ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_copy_install_creates_real_directory() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+        create_central_skill(&central_dir, "copy-skill");
+
+        let result =
+            install_skill_to_agent_copy_impl(&pool, "copy-skill", "claude-code").await;
+        assert!(result.is_ok(), "copy install should succeed: {:?}", result);
+
+        let target = agent_dir.join("copy-skill");
+        let meta = fs::symlink_metadata(&target).unwrap();
+        // Must be a real directory — NOT a symlink.
+        assert!(
+            meta.is_dir() && !meta.file_type().is_symlink(),
+            "installed path should be a real directory, not a symlink"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_install_files_are_copied() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+
+        // Create skill with multiple files to verify all are copied.
+        let skill_dir = central_dir.join("multi-file-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: multi-file-skill\ndescription: Test\n---\n",
+        )
+        .unwrap();
+        fs::write(skill_dir.join("extra.txt"), "extra content").unwrap();
+
+        install_skill_to_agent_copy_impl(&pool, "multi-file-skill", "claude-code")
+            .await
+            .unwrap();
+
+        let installed_skill_dir = agent_dir.join("multi-file-skill");
+
+        // Verify SKILL.md was copied.
+        let skill_md = installed_skill_dir.join("SKILL.md");
+        assert!(skill_md.exists(), "SKILL.md should be copied to agent dir");
+
+        // Verify extra file was copied.
+        let extra = installed_skill_dir.join("extra.txt");
+        assert!(extra.exists(), "extra.txt should be copied to agent dir");
+        assert_eq!(
+            fs::read_to_string(&extra).unwrap(),
+            "extra content",
+            "copied file contents should match"
+        );
+
+        // Confirm that the installed path is NOT a symlink.
+        let meta = fs::symlink_metadata(&installed_skill_dir).unwrap();
+        assert!(
+            !meta.file_type().is_symlink(),
+            "installed directory must NOT be a symlink"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_install_updates_db_with_copy_type() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+        create_central_skill(&central_dir, "db-copy-skill");
+
+        install_skill_to_agent_copy_impl(&pool, "db-copy-skill", "claude-code")
+            .await
+            .unwrap();
+
+        let installations = db::get_skill_installations(&pool, "db-copy-skill")
+            .await
+            .unwrap();
+        assert_eq!(installations.len(), 1);
+        assert_eq!(installations[0].agent_id, "claude-code");
+        assert_eq!(
+            installations[0].link_type, "copy",
+            "DB should record link_type as 'copy'"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_install_to_central_is_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &tmp.path().join("claude")).await;
+        create_central_skill(&central_dir, "self-copy-skill");
+
+        let result =
+            install_skill_to_agent_copy_impl(&pool, "self-copy-skill", "central").await;
+        assert!(
+            result.is_err(),
+            "copy install to 'central' should be rejected"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_install_fails_when_canonical_missing() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+        // Deliberately do NOT create the skill in central_dir.
+
+        let result =
+            install_skill_to_agent_copy_impl(&pool, "missing-skill", "claude-code").await;
+        assert!(
+            result.is_err(),
+            "copy install should fail when canonical skill is missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_install_refuses_to_overwrite_real_dir() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+        create_central_skill(&central_dir, "existing-dir-skill");
+
+        // Create a real directory at the target location.
+        fs::create_dir_all(agent_dir.join("existing-dir-skill")).unwrap();
+
+        let result =
+            install_skill_to_agent_copy_impl(&pool, "existing-dir-skill", "claude-code").await;
+        assert!(
+            result.is_err(),
+            "copy install should refuse to overwrite an existing real directory"
+        );
+    }
+
+    // ── uninstall (copy) ──────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_uninstall_removes_copied_directory() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+        create_central_skill(&central_dir, "uninstall-copy-skill");
+
+        // First, install via copy.
+        install_skill_to_agent_copy_impl(&pool, "uninstall-copy-skill", "claude-code")
+            .await
+            .unwrap();
+
+        let target = agent_dir.join("uninstall-copy-skill");
+        assert!(
+            target.is_dir(),
+            "copied directory should exist before uninstall"
+        );
+
+        // Now uninstall.
+        uninstall_skill_from_agent_impl(&pool, "uninstall-copy-skill", "claude-code")
+            .await
+            .unwrap();
+
+        assert!(
+            fs::symlink_metadata(&target).is_err(),
+            "copied directory should have been removed after uninstall"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_uninstall_copy_removes_db_record() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+        create_central_skill(&central_dir, "db-copy-uninstall-skill");
+
+        install_skill_to_agent_copy_impl(&pool, "db-copy-uninstall-skill", "claude-code")
+            .await
+            .unwrap();
+
+        uninstall_skill_from_agent_impl(&pool, "db-copy-uninstall-skill", "claude-code")
+            .await
+            .unwrap();
+
+        let installations =
+            db::get_skill_installations(&pool, "db-copy-uninstall-skill")
+                .await
+                .unwrap();
+        assert!(
+            installations.is_empty(),
+            "DB record should be removed after uninstall"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_uninstall_refuses_real_dir_without_copy_record() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&agent_dir).unwrap();
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+
+        // Place a real directory with NO DB record as 'copy' type.
+        fs::create_dir_all(agent_dir.join("protected-skill")).unwrap();
+
+        let result =
+            uninstall_skill_from_agent_impl(&pool, "protected-skill", "claude-code").await;
+        assert!(
+            result.is_err(),
+            "uninstall should refuse to delete a real directory without a copy record"
+        );
+
+        // Ensure the directory still exists.
+        assert!(
+            agent_dir.join("protected-skill").is_dir(),
+            "real directory should NOT have been deleted"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_batch_install_uses_copy_method() {
+        let tmp = TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        let agent_dir = tmp.path().join("claude");
+        fs::create_dir_all(&central_dir).unwrap();
+
+        let pool = setup_db(&central_dir, &agent_dir).await;
+        create_central_skill(&central_dir, "batch-copy-skill");
+
+        let mut succeeded = Vec::new();
+        let mut failed = Vec::new();
+        for agent_id in &["claude-code".to_string()] {
+            match install_skill_to_agent_copy_impl(&pool, "batch-copy-skill", agent_id).await {
+                Ok(_) => succeeded.push(agent_id.clone()),
+                Err(e) => failed.push(FailedInstall {
+                    agent_id: agent_id.clone(),
+                    error: e,
+                }),
+            }
+        }
+
+        assert_eq!(succeeded.len(), 1);
+        assert!(failed.is_empty());
+
+        // The installed directory must NOT be a symlink.
+        let target = agent_dir.join("batch-copy-skill");
+        let meta = fs::symlink_metadata(&target).unwrap();
+        assert!(
+            !meta.file_type().is_symlink(),
+            "batch copy install should create a real directory"
+        );
     }
 }
