@@ -33,12 +33,13 @@
 - For user-testing validation, run the app with an assigned isolated `HOME` under `/tmp/skills-manage-test-fixtures/` so scanning uses fixture data instead of the real user home.
 - Stay within that fixture home and the assigned evidence/output directories; do not inspect or modify real `~/.*skills/` directories.
 - For milestone reruns that rely on native macOS Tauri window automation, use a single validator at a time because window focus and AX interactions are global shared state.
+- Tauri `app.path().home_dir()` follows the launched process `HOME`, so validators can isolate both the scan roots and `~/.skillsmanage/` database by starting `pnpm tauri dev` with `HOME=/tmp/...`.
 - The foundation and platform-views assertions each share one startup scan and one backing SQLite DB under the isolated HOME, so keep each milestone's assertion set serialized inside its assigned validator.
-- If the browser preview does not reflect Tauri state, use the native `skills-manage` window as the real user surface and capture the window with a Quartz-based screenshot for evidence.
+- If the browser preview does not reflect Tauri state, use the native `skills-manage` window as the real user surface and capture evidence with macOS `screencapture` (preferred over Quartz image capture when the latter skews the Tauri window).
 
 ## Native macOS Tauri Automation
 
 - When the browser preview lacks Tauri globals and `System Events` AppleScript becomes unreliable, a dependable fallback is Python + PyObjC.
 - Install user-local helpers with `python3 -m pip install --user pyobjc-framework-Quartz pyobjc-framework-ApplicationServices pillow`.
 - Use `ApplicationServices.AXUIElementCopyAttributeValue` to locate sidebar `AXButton` elements such as `Claude Code 2` or `Central Skills 3`, then trigger navigation with `AXUIElementPerformAction(..., "AXPress")`.
-- Capture the real Tauri window with Quartz `CGWindowListCreateImage(...)` so evidence reflects the native app instead of the browser preview.
+- Prefer macOS `screencapture` for evidence images; Quartz window APIs remain useful for window metadata/selection, but `CGWindowListCreateImage(...)` can skew the captured Tauri pixels for this app.

@@ -1,0 +1,38 @@
+{
+  "milestone": "skill-detail",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-PLAT-005",
+    "VAL-DET-001",
+    "VAL-DET-002",
+    "VAL-DET-003",
+    "VAL-DET-004",
+    "VAL-DET-005",
+    "VAL-DET-006",
+    "VAL-DET-007",
+    "VAL-CROSS-001",
+    "VAL-CROSS-005"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented that Tauri `app.path().home_dir()` follows the launched process `HOME`, so validators can isolate both scan roots and the `~/.skillsmanage/` database by starting `pnpm tauri dev` with a fixture HOME.",
+      "source": "setup"
+    },
+    {
+      "target": "user-testing.md",
+      "description": "Updated native-window guidance to prefer macOS `screencapture` for evidence because Quartz `CGWindowListCreateImage(...)` can skew screenshots of this Tauri app.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
