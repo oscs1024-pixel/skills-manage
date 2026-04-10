@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-skill-installations-migration",
+  "reviewedAt": "2026-04-10T03:04:47Z",
+  "commitId": "2a889d4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix closes the prior upgrade-path bug by adding an explicit `skill_installations.created_at` migration in `init_database()`, backfilling legacy rows, and covering both the old-schema migration and idempotent re-init cases with dedicated Rust tests.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "fix-skill-detail-install-timestamp",
+  "summary": "Pass. The prior blocking issue is resolved: existing databases now gain the missing `created_at` column during initialization, legacy rows are backfilled, and the updated schema behavior is exercised by focused migration tests."
+}
