@@ -1,7 +1,7 @@
 {
   "milestone": "collections",
-  "round": 2,
-  "status": "pass",
+  "round": 1,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -30,21 +30,29 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
+    "total": 2,
     "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "failed": 1,
+    "failedFeatures": [
+      "collection-ui"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "collection-ui",
+      "severity": "blocking",
+      "description": "VAL-COL-002 is still unmet: there is no working way to add a skill to an existing collection from either Skill Detail or Central Skills. `SkillDetail.tsx` renders a dead `Add to collection` button, and `CentralSkillCard.tsx` still exposes only install controls."
+    }
+  ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills",
       "suggestion": "Update the scrutiny validation/reviewer procedure so Task-spawned `scrutiny-feature-reviewer` subagents can run with automatic execution approval in this worker environment, or document the manual-review fallback explicitly.",
-      "evidence": "In this collections scrutiny re-run, the Task invocation for `fix-add-to-collection-flow` again exited with `Exec ended early: insufficient permission to proceed`, so the validator had to review the handoff, transcript skeleton, and commit diffs manually.",
+      "evidence": "In this collections scrutiny run, both Task invocations for `rust-collection-commands` and `collection-ui` exited immediately with `Exec ended early: insufficient permission to proceed`, so the validator had to complete both reviews manually after checking the handoffs, transcript skeletons, and commit diffs.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/collections/scrutiny/synthesis.round1.json"
+  "previousRound": null
 }

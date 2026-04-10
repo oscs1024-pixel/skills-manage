@@ -1,0 +1,15 @@
+{
+  "featureId": "fix-add-to-collection-flow",
+  "reviewedAt": "2026-04-10T04:18:37Z",
+  "commitId": "f31a912",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The follow-up change closes the missing VAL-COL-002 entry point by wiring the Skill Detail page's `Add to collection` button to a real picker dialog that loads collections, blocks already-member targets, and refreshes the detail view after successful adds.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "collection-ui",
+  "summary": "Pass. `SkillDetail.tsx` now opens `CollectionPickerDialog`, the dialog calls `addSkillToCollection` for selected collections, and the detail page reloads membership after success, so the previously missing add-to-collection flow is now present on an allowed surface."
+}
