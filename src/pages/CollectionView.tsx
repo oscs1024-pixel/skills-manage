@@ -177,7 +177,7 @@ export function CollectionView() {
       <div className="border-b border-border px-6 py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-semibold truncate">{currentDetail.name}</h1>
+            <h1 className="text-xl font-semibold truncate">{currentDetail.name}</h1>
             {currentDetail.description && (
               <p className="text-sm text-muted-foreground mt-0.5">
                 {currentDetail.description}
@@ -261,11 +261,16 @@ export function CollectionView() {
       {/* Skills list */}
       <div className="flex-1 overflow-auto">
         {currentDetail.skills.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 py-20 text-muted-foreground">
-            <BookOpen className="size-10 opacity-30" />
-            <p className="text-sm">No skills in this collection yet.</p>
+          <div className="flex flex-col items-center justify-center h-full gap-4 py-20">
+            <div className="p-4 rounded-full bg-muted/60">
+              <BookOpen className="size-12 text-muted-foreground opacity-60" />
+            </div>
+            <div className="text-center space-y-1">
+              <p className="text-sm font-medium text-muted-foreground">No skills in this collection yet.</p>
+              <p className="text-xs text-muted-foreground/70">Add skills to start organizing your toolkit.</p>
+            </div>
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={() => setIsPickerOpen(true)}
             >

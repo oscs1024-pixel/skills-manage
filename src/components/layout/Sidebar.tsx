@@ -31,9 +31,9 @@ function Badge({
   return (
     <span
       className={cn(
-        "ml-auto shrink-0 rounded-full text-xs px-1.5 py-0.5 min-w-[1.25rem] text-center leading-tight",
+        "ml-auto shrink-0 rounded-full text-xs px-1.5 py-0.5 min-w-[1.25rem] text-center leading-tight font-medium",
         variant === "primary"
-          ? "bg-primary/10 text-primary font-medium"
+          ? "bg-primary/15 text-primary"
           : "bg-muted text-muted-foreground"
       )}
     >
@@ -63,38 +63,54 @@ function NavItem({
 }) {
   if (collapsed && icon) {
     return (
-      <button
-        onClick={onClick}
-        title={label}
-        aria-label={label}
-        className={cn(
-          "flex items-center justify-center w-full py-2 rounded-md transition-colors",
-          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-          isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+      <div className="relative">
+        <button
+          onClick={onClick}
+          title={label}
+          aria-label={label}
+          className={cn(
+            "flex items-center justify-center w-full py-2 rounded-md transition-colors",
+            "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            isActive && "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+          )}
+        >
+          {icon}
+        </button>
+        {isActive && (
+          <span
+            className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-sidebar-primary"
+            aria-hidden="true"
+          />
         )}
-      >
-        {icon}
-      </button>
+      </div>
     );
   }
 
   return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center w-full px-3 py-1.5 text-sm rounded-md mx-1 transition-colors",
-        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-        isActive &&
-          "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+    <div className="relative">
+      <button
+        onClick={onClick}
+        className={cn(
+          "flex items-center w-full px-3 py-1.5 text-sm rounded-md mx-1 transition-colors",
+          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          isActive &&
+            "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+        )}
+        style={{ width: "calc(100% - 0.5rem)" }}
+      >
+        {icon && <span className="mr-2 shrink-0">{icon}</span>}
+        <span className="truncate">{label}</span>
+        {badge !== undefined && (
+          <Badge count={badge} variant={badgeVariant} />
+        )}
+      </button>
+      {isActive && (
+        <span
+          className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-sidebar-primary"
+          aria-hidden="true"
+        />
       )}
-      style={{ width: "calc(100% - 0.5rem)" }}
-    >
-      {icon && <span className="mr-2 shrink-0">{icon}</span>}
-      <span className="truncate">{label}</span>
-      {badge !== undefined && (
-        <Badge count={badge} variant={badgeVariant} />
-      )}
-    </button>
+    </div>
   );
 }
 
@@ -113,7 +129,7 @@ function SectionHeader({
 
   return (
     <div className="flex items-center justify-between px-3 py-1.5">
-      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      <span className="text-xs font-semibold text-muted-foreground/80 uppercase tracking-widest">
         {label}
       </span>
       {action}
@@ -201,7 +217,7 @@ export function Sidebar() {
         )}
       >
         {!collapsed && (
-          <h1 className="text-sm font-semibold tracking-tight">skills-manage</h1>
+          <h1 className="text-sm font-bold tracking-tight text-sidebar-primary">skills-manage</h1>
         )}
         {/* Collapse toggle */}
         <button
@@ -221,7 +237,7 @@ export function Sidebar() {
       {/* Scrollable sections */}
       <div className="flex-1 overflow-y-auto py-3 space-y-4">
         {/* ── By Tool ─────────────────────────────────────────── */}
-        <section aria-label="By Tool">
+        <section aria-label="By Tool" className="pb-2 border-b border-sidebar-border/70">
           <SectionHeader label="By Tool" collapsed={collapsed} />
           {isLoading ? (
             <div className={cn(
@@ -255,7 +271,7 @@ export function Sidebar() {
         </section>
 
         {/* ── Central Skills ───────────────────────────────────── */}
-        <section aria-label="Central Skills">
+        <section aria-label="Central Skills" className="pb-2 border-b border-sidebar-border/70">
           {collapsed ? (
             <div className="px-1">
               <NavItem
@@ -373,22 +389,30 @@ export function Sidebar() {
       </div>
 
       {/* Settings pinned at bottom */}
-      <div className="border-t border-border p-2">
-        <button
-          onClick={() => navigate("/settings")}
-          className={cn(
-            "flex items-center w-full rounded-md transition-colors text-sm",
-            "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            pathname === "/settings" &&
-              "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
-            collapsed ? "justify-center py-2" : "gap-2 px-3 py-1.5"
+      <div className="border-t border-sidebar-border p-2">
+        <div className="relative">
+          <button
+            onClick={() => navigate("/settings")}
+            className={cn(
+              "flex items-center w-full rounded-md transition-colors text-sm",
+              "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              pathname === "/settings" &&
+                "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
+              collapsed ? "justify-center py-2" : "gap-2 px-3 py-1.5"
+            )}
+            title={collapsed ? "设置" : undefined}
+            aria-label="设置"
+          >
+            <Settings className="size-4" />
+            {!collapsed && <span>设置</span>}
+          </button>
+          {pathname === "/settings" && (
+            <span
+              className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-r bg-sidebar-primary"
+              aria-hidden="true"
+            />
           )}
-          title={collapsed ? "设置" : undefined}
-          aria-label="设置"
-        >
-          <Settings className="size-4" />
-          {!collapsed && <span>设置</span>}
-        </button>
+        </div>
       </div>
 
       {/* Create Collection dialog */}

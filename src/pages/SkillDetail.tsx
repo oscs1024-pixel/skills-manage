@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+    <div className="text-xs font-bold uppercase tracking-widest text-muted-foreground/80 mb-3">
       {children}
     </div>
   );
@@ -120,7 +120,7 @@ function PlatformInstallRow({
         </Button>
       ) : (
         <Button
-          variant="outline"
+          variant="default"
           size="sm"
           onClick={() => onInstall(agent.id)}
           aria-label={`Install to ${agent.display_name}`}
@@ -268,7 +268,7 @@ export function SkillDetail() {
           <ArrowLeft className="size-4" />
         </button>
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold truncate">
+          <h1 className="text-xl font-semibold truncate">
             {isLoading ? (skillId ?? "") : (detail?.name ?? skillId ?? "")}
           </h1>
           {detail?.description && (

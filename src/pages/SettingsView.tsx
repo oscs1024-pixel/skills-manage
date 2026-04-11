@@ -278,7 +278,7 @@ export function SettingsView() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b border-border px-6 py-4">
-        <h1 className="text-lg font-semibold">设置</h1>
+        <h1 className="text-xl font-semibold">设置</h1>
       </div>
 
       {/* Content */}

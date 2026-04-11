@@ -15,8 +15,8 @@ function SourceIndicator({ skill }: { skill: ScannedSkill }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-1 text-xs",
-        isSymlink ? "text-primary/70" : "text-muted-foreground"
+        "flex items-center gap-1 text-xs font-medium",
+        isSymlink ? "text-primary/80" : "text-muted-foreground"
       )}
     >
       {isSymlink ? (
@@ -51,7 +51,7 @@ export function SkillCard({ skill, className }: SkillCardProps) {
       <Card
         size="sm"
         className={cn(
-          "transition-colors hover:ring-foreground/20 hover:bg-accent/30 cursor-pointer",
+          "transition-all hover:ring-primary/25 hover:bg-accent/30 cursor-pointer",
           className
         )}
       >

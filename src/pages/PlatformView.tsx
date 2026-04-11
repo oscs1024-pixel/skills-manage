@@ -10,9 +10,11 @@ import { SkillCard } from "@/components/platform/SkillCard";
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 py-20 text-muted-foreground">
-      <PackageOpen className="size-10 opacity-30" />
-      <p className="text-sm">{message}</p>
+    <div className="flex flex-col items-center justify-center h-full gap-4 py-20">
+      <div className="p-4 rounded-full bg-muted/60">
+        <PackageOpen className="size-12 text-muted-foreground opacity-60" />
+      </div>
+      <p className="text-sm text-muted-foreground font-medium">{message}</p>
     </div>
   );
 }
@@ -68,7 +70,7 @@ export function PlatformView() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b border-border px-6 py-4">
-        <h1 className="text-lg font-semibold">{agent.display_name}</h1>
+        <h1 className="text-xl font-semibold">{agent.display_name}</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           {agent.global_skills_dir}
         </p>
@@ -82,7 +84,7 @@ export function PlatformView() {
             placeholder="Search skills..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
+            className="pl-8 bg-muted/40"
           />
         </div>
       </div>

@@ -87,7 +87,7 @@ export function CentralSkillCard({
 
             {/* Install to... button */}
             <Button
-              variant="outline"
+              variant="default"
               size="sm"
               onClick={() => onInstallClick(skill)}
               aria-label={`Install ${skill.name} to platforms`}

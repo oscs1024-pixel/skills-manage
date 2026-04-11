@@ -15,9 +15,11 @@ import { SkillWithLinks } from "@/types";
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-3 py-20 text-muted-foreground">
-      <PackageOpen className="size-10 opacity-30" />
-      <p className="text-sm">{message}</p>
+    <div className="flex flex-col items-center justify-center h-full gap-4 py-20">
+      <div className="p-4 rounded-full bg-muted/60">
+        <PackageOpen className="size-12 text-muted-foreground opacity-60" />
+      </div>
+      <p className="text-sm text-muted-foreground font-medium">{message}</p>
     </div>
   );
 }
@@ -28,23 +30,25 @@ function FirstVisitEmptyState() {
   const navigate = useNavigate();
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 py-16 text-center px-8">
-      <PackageOpen className="size-14 opacity-20" />
+      <div className="p-5 rounded-full bg-primary/10 ring-1 ring-primary/20">
+        <PackageOpen className="size-14 text-primary opacity-70" />
+      </div>
       <div className="space-y-2">
-        <h2 className="text-lg font-semibold text-foreground">Welcome to skills-manage!</h2>
+        <h2 className="text-xl font-semibold text-foreground">Welcome to skills-manage!</h2>
         <p className="text-sm text-muted-foreground max-w-sm leading-relaxed">
-          No skills found in <code className="bg-muted px-1 rounded text-xs">~/.agents/skills/</code>.
+          No skills found in <code className="bg-muted px-1.5 py-0.5 rounded-md text-xs font-mono">~/.agents/skills/</code>.
           Get started by creating a SKILL.md file there, or add custom scan directories in Settings.
         </p>
       </div>
       <div className="flex flex-col gap-3 items-center">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-4 py-3 max-w-xs text-left">
-          <FolderOpen className="size-4 shrink-0" />
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-xl px-4 py-3 max-w-xs text-left border border-border">
+          <FolderOpen className="size-4 shrink-0 text-primary/60" />
           <span>
             Create a skill directory at <code className="font-mono">~/.agents/skills/my-skill/SKILL.md</code>
           </span>
         </div>
         <Button
-          variant="outline"
+          variant="default"
           size="sm"
           onClick={() => navigate("/settings")}
           className="gap-2"
@@ -127,7 +131,7 @@ export function CentralSkillsView() {
       {/* Header */}
       <div className="border-b border-border px-6 py-4 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-lg font-semibold">Central Skills</h1>
+          <h1 className="text-xl font-semibold">Central Skills</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             ~/.agents/skills/
           </p>
@@ -151,7 +155,7 @@ export function CentralSkillsView() {
             placeholder="Search central skills..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
+            className="pl-8 bg-muted/40"
             aria-label="Search central skills"
           />
         </div>
