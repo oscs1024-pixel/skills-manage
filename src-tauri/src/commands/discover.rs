@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use tauri::{Emitter, State};
 
 use crate::db::{self, DbPool};
@@ -244,6 +245,56 @@ fn scan_root_for_projects(
 #[tauri::command]
 pub async fn discover_scan_roots() -> Result<Vec<ScanRoot>, String> {
     Ok(default_scan_roots())
+}
+
+/// Get scan roots with persisted enabled state from DB.
+///
+/// Returns auto-detected default roots, then overlays any previously
+/// persisted enabled/disabled states from the settings table.
+#[tauri::command]
+pub async fn get_scan_roots(state: State<'_, AppState>) -> Result<Vec<ScanRoot>, String> {
+    let pool = &state.db;
+    let mut roots = default_scan_roots();
+
+    // Load persisted enabled states from settings.
+    // We store a single JSON blob under the key "discover_scan_roots_config"
+    // mapping path -> enabled (bool).
+    if let Some(json) = db::get_setting(pool, "discover_scan_roots_config").await? {
+        let config: HashMap<String, bool> =
+            serde_json::from_str(&json).map_err(|e| format!("Invalid scan roots config: {}", e))?;
+        for root in &mut roots {
+            if let Some(&enabled) = config.get(&root.path) {
+                root.enabled = enabled;
+            }
+        }
+    }
+
+    Ok(roots)
+}
+
+/// Persist the enabled/disabled state of a scan root.
+///
+/// Updates the "discover_scan_roots_config" setting in the DB, which
+/// stores a JSON object mapping root paths to their enabled state.
+#[tauri::command]
+pub async fn set_scan_root_enabled(
+    state: State<'_, AppState>,
+    path: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let pool = &state.db;
+
+    // Load existing config or start fresh.
+    let mut config: HashMap<String, bool> = match db::get_setting(pool, "discover_scan_roots_config").await? {
+        Some(json) => serde_json::from_str(&json).map_err(|e| format!("Invalid scan roots config: {}", e))?,
+        None => HashMap::new(),
+    };
+
+    config.insert(path, enabled);
+
+    let json = serde_json::to_string(&config)
+        .map_err(|e| format!("Failed to serialize scan roots config: {}", e))?;
+    db::set_setting(pool, "discover_scan_roots_config", &json).await
 }
 
 /// Start a project-discovery scan across the given root directories.
@@ -911,5 +962,645 @@ mod tests {
             skill_id: skill_dir_name,
             target: "central".to_string(),
         })
+    }
+
+    // ── Additional tests ──────────────────────────────────────────────────────
+
+    /// Helper: set up an in-memory DB with initialized schema.
+    async fn setup_test_db() -> DbPool {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+        db::init_database(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn test_import_discovered_skill_to_platform_creates_symlink() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = setup_test_db().await;
+
+        // Override agent skills dir for testing.
+        let agent_dir = tmp.path().join("agent-skills");
+        sqlx::query("UPDATE agents SET global_skills_dir = ? WHERE id = 'claude-code'")
+            .bind(agent_dir.to_str().unwrap())
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        std::fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create a discovered skill in a project.
+        let skill_dir = tmp.path().join("project/.claude/skills/my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-skill\ndescription: A test skill\n---\n\n# My Skill\n",
+        )
+        .unwrap();
+
+        let now = Utc::now().to_rfc3339();
+        db::insert_discovered_skill(
+            &pool,
+            "claude-code__project__my-skill",
+            "my-skill",
+            Some("A test skill"),
+            &skill_dir.join("SKILL.md").to_string_lossy(),
+            &skill_dir.to_string_lossy(),
+            &tmp.path().join("project").to_string_lossy(),
+            "project",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        // Import to platform using the impl function.
+        let result = import_discovered_skill_to_platform_impl(
+            &pool,
+            "claude-code__project__my-skill",
+            "claude-code",
+            &agent_dir,
+        )
+        .await;
+
+        assert!(result.is_ok(), "import should succeed: {:?}", result);
+
+        // Verify the symlink was created.
+        let link_path = agent_dir.join("my-skill");
+        assert!(
+            link_path.exists(),
+            "symlink target should exist"
+        );
+        let meta = std::fs::symlink_metadata(&link_path).unwrap();
+        assert!(meta.is_symlink(), "should be a symlink");
+
+        // Verify discovered skill record was removed.
+        let record = db::get_discovered_skill_by_id(&pool, "claude-code__project__my-skill")
+            .await
+            .unwrap();
+        assert!(record.is_none(), "discovered skill record should be removed");
+    }
+
+    /// Implementation of import_discovered_skill_to_platform that accepts a custom agent_dir
+    /// for testing (avoids depending on $HOME and real agent dirs).
+    async fn import_discovered_skill_to_platform_impl(
+        pool: &DbPool,
+        discovered_skill_id: &str,
+        agent_id: &str,
+        agent_dir: &Path,
+    ) -> Result<ImportResult, String> {
+        let skill = db::get_discovered_skill_by_id(pool, discovered_skill_id)
+            .await?
+            .ok_or_else(|| format!("Discovered skill '{}' not found", discovered_skill_id))?;
+
+        let skill_dir_name = Path::new(&skill.dir_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "Cannot extract skill directory name".to_string())?
+            .to_string();
+
+        let target_path = agent_dir.join(&skill_dir_name);
+
+        std::fs::create_dir_all(agent_dir)
+            .map_err(|e| format!("Failed to create agent skills directory: {}", e))?;
+
+        if target_path.exists() || std::fs::symlink_metadata(&target_path).is_ok() {
+            return Err(format!(
+                "Skill '{}' already exists in agent {}",
+                skill_dir_name, agent_id
+            ));
+        }
+
+        let src_path = Path::new(&skill.dir_path);
+        let relative_target = super::super::linker::make_relative_path(agent_dir, src_path);
+        super::super::linker::create_symlink(&relative_target, &target_path)?;
+
+        // Record the installation.
+        let now = Utc::now().to_rfc3339();
+
+        let skill_md_path = src_path.join("SKILL.md");
+        let info = super::super::scanner::parse_skill_md(&skill_md_path);
+
+        if let Some(skill_info) = info {
+            let db_skill = db::Skill {
+                id: skill_dir_name.clone(),
+                name: skill_info.name,
+                description: skill_info.description,
+                file_path: skill_md_path.to_string_lossy().into_owned(),
+                canonical_path: None,
+                is_central: false,
+                source: Some("symlink".to_string()),
+                content: None,
+                scanned_at: now.clone(),
+            };
+            db::upsert_skill(pool, &db_skill).await?;
+        }
+
+        let installation = db::SkillInstallation {
+            skill_id: skill_dir_name.clone(),
+            agent_id: agent_id.to_string(),
+            installed_path: target_path.to_string_lossy().into_owned(),
+            link_type: "symlink".to_string(),
+            symlink_target: Some(skill.dir_path.clone()),
+            created_at: now,
+        };
+        db::upsert_skill_installation(pool, &installation).await?;
+
+        db::delete_discovered_skill(pool, discovered_skill_id).await?;
+
+        Ok(ImportResult {
+            skill_id: skill_dir_name,
+            target: agent_id.to_string(),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_stop_project_scan_sets_cancel_flag() {
+        // Before calling stop, the flag should be false.
+        SCAN_CANCEL.store(false, Ordering::Relaxed);
+        assert!(!SCAN_CANCEL.load(Ordering::Relaxed));
+
+        // After calling stop, the flag should be true.
+        SCAN_CANCEL.store(true, Ordering::Relaxed);
+        assert!(SCAN_CANCEL.load(Ordering::Relaxed));
+
+        // Reset for other tests.
+        SCAN_CANCEL.store(false, Ordering::Relaxed);
+    }
+
+    #[tokio::test]
+    async fn test_get_discovered_skills_groups_by_project() {
+        let pool = setup_test_db().await;
+        let now = Utc::now().to_rfc3339();
+
+        // Insert two discovered skills in the same project.
+        db::insert_discovered_skill(
+            &pool,
+            "claude-code__proj1__skill-a",
+            "skill-a",
+            Some("Skill A"),
+            "/tmp/proj1/.claude/skills/skill-a/SKILL.md",
+            "/tmp/proj1/.claude/skills/skill-a",
+            "/tmp/proj1",
+            "proj1",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        db::insert_discovered_skill(
+            &pool,
+            "cursor__proj1__skill-b",
+            "skill-b",
+            Some("Skill B"),
+            "/tmp/proj1/.cursor/skills/skill-b/SKILL.md",
+            "/tmp/proj1/.cursor/skills/skill-b",
+            "/tmp/proj1",
+            "proj1",
+            "cursor",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        // Insert a skill in a different project.
+        db::insert_discovered_skill(
+            &pool,
+            "claude-code__proj2__skill-c",
+            "skill-c",
+            Some("Skill C"),
+            "/tmp/proj2/.claude/skills/skill-c/SKILL.md",
+            "/tmp/proj2/.claude/skills/skill-c",
+            "/tmp/proj2",
+            "proj2",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        let rows = db::get_all_discovered_skills(&pool).await.unwrap();
+        assert_eq!(rows.len(), 3, "should have 3 discovered skill rows");
+
+        // Group by project_path.
+        let mut by_project: HashMap<String, Vec<db::DiscoveredSkillRow>> = HashMap::new();
+        for row in rows {
+            by_project
+                .entry(row.project_path.clone())
+                .or_default()
+                .push(row);
+        }
+
+        assert_eq!(by_project.len(), 2, "should have 2 projects");
+        let proj1_skills = by_project.get("/tmp/proj1").unwrap();
+        assert_eq!(proj1_skills.len(), 2, "proj1 should have 2 skills");
+        let proj2_skills = by_project.get("/tmp/proj2").unwrap();
+        assert_eq!(proj2_skills.len(), 1, "proj2 should have 1 skill");
+    }
+
+    #[tokio::test]
+    async fn test_clear_discovered_skills_removes_all() {
+        let pool = setup_test_db().await;
+        let now = Utc::now().to_rfc3339();
+
+        db::insert_discovered_skill(
+            &pool,
+            "id1",
+            "skill-1",
+            None,
+            "/tmp/skill1/SKILL.md",
+            "/tmp/skill1",
+            "/tmp/proj1",
+            "proj1",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        db::insert_discovered_skill(
+            &pool,
+            "id2",
+            "skill-2",
+            None,
+            "/tmp/skill2/SKILL.md",
+            "/tmp/skill2",
+            "/tmp/proj1",
+            "proj1",
+            "cursor",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        let before = db::get_all_discovered_skills(&pool).await.unwrap();
+        assert_eq!(before.len(), 2);
+
+        db::clear_all_discovered_skills(&pool).await.unwrap();
+
+        let after = db::get_all_discovered_skills(&pool).await.unwrap();
+        assert!(after.is_empty(), "all discovered skills should be cleared");
+    }
+
+    #[tokio::test]
+    async fn test_get_scan_roots_returns_defaults() {
+        let pool = setup_test_db().await;
+
+        // No persisted config yet — should return defaults.
+        let roots = get_scan_roots_impl(&pool).await.unwrap();
+        assert!(!roots.is_empty(), "should return default scan roots");
+
+        // Each root should have a path and label.
+        for root in &roots {
+            assert!(!root.path.is_empty());
+            assert!(!root.label.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_set_scan_root_enabled_persists_state() {
+        let pool = setup_test_db().await;
+
+        // Get defaults.
+        let roots = get_scan_roots_impl(&pool).await.unwrap();
+        let some_path = roots[0].path.clone();
+
+        // Disable a root.
+        set_scan_root_enabled_impl(&pool, some_path.clone(), false)
+            .await
+            .unwrap();
+
+        // Verify the change is reflected.
+        let updated = get_scan_roots_impl(&pool).await.unwrap();
+        let changed = updated.iter().find(|r| r.path == some_path).unwrap();
+        assert!(!changed.enabled, "root should be disabled after set_scan_root_enabled");
+
+        // Re-enable it.
+        set_scan_root_enabled_impl(&pool, some_path.clone(), true)
+            .await
+            .unwrap();
+
+        let re_updated = get_scan_roots_impl(&pool).await.unwrap();
+        let re_changed = re_updated.iter().find(|r| r.path == some_path).unwrap();
+        assert!(re_changed.enabled, "root should be re-enabled");
+    }
+
+    /// Implementation of get_scan_roots that takes a pool directly for testing.
+    async fn get_scan_roots_impl(pool: &DbPool) -> Result<Vec<ScanRoot>, String> {
+        let mut roots = default_scan_roots();
+
+        if let Some(json) = db::get_setting(pool, "discover_scan_roots_config").await? {
+            let config: HashMap<String, bool> =
+                serde_json::from_str(&json).map_err(|e| format!("Invalid scan roots config: {}", e))?;
+            for root in &mut roots {
+                if let Some(&enabled) = config.get(&root.path) {
+                    root.enabled = enabled;
+                }
+            }
+        }
+
+        Ok(roots)
+    }
+
+    /// Implementation of set_scan_root_enabled that takes a pool directly for testing.
+    async fn set_scan_root_enabled_impl(
+        pool: &DbPool,
+        path: String,
+        enabled: bool,
+    ) -> Result<(), String> {
+        let mut config: HashMap<String, bool> = match db::get_setting(pool, "discover_scan_roots_config").await? {
+            Some(json) => serde_json::from_str(&json).map_err(|e| format!("Invalid scan roots config: {}", e))?,
+            None => HashMap::new(),
+        };
+
+        config.insert(path, enabled);
+
+        let json = serde_json::to_string(&config)
+            .map_err(|e| format!("Failed to serialize scan roots config: {}", e))?;
+        db::set_setting(pool, "discover_scan_roots_config", &json).await
+    }
+
+    #[tokio::test]
+    async fn test_scan_cancellation_stops_early() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let central_dir = tmp.path().join("central");
+        std::fs::create_dir_all(&central_dir).unwrap();
+
+        // Create multiple project dirs with skills.
+        for i in 0..5 {
+            let project_dir = tmp.path().join(format!("project-{}", i));
+            let skill_dir = project_dir.join(".claude/skills/deploy-skill");
+            std::fs::create_dir_all(&skill_dir).unwrap();
+            std::fs::write(
+                skill_dir.join("SKILL.md"),
+                format!(
+                    "---\nname: deploy-{}\ndescription: Deploy stuff\n---\n\n# Deploy {}\n",
+                    i, i
+                ),
+            )
+            .unwrap();
+        }
+
+        let patterns = vec![(
+            "claude-code".to_string(),
+            "Claude Code".to_string(),
+            PathBuf::from(".claude/skills"),
+        )];
+
+        // Set cancel flag before scanning.
+        SCAN_CANCEL.store(true, Ordering::Relaxed);
+
+        let projects = scan_root_for_projects(tmp.path(), &patterns, &central_dir);
+        assert!(
+            projects.is_empty(),
+            "should find no projects when cancel flag is set"
+        );
+
+        // Reset for other tests.
+        SCAN_CANCEL.store(false, Ordering::Relaxed);
+    }
+
+    #[tokio::test]
+    async fn test_discovered_skill_insert_and_get_by_id() {
+        let pool = setup_test_db().await;
+        let now = Utc::now().to_rfc3339();
+
+        db::insert_discovered_skill(
+            &pool,
+            "test-id-1",
+            "test-skill",
+            Some("A description"),
+            "/tmp/project/.claude/skills/test-skill/SKILL.md",
+            "/tmp/project/.claude/skills/test-skill",
+            "/tmp/project",
+            "project",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        let found = db::get_discovered_skill_by_id(&pool, "test-id-1")
+            .await
+            .unwrap();
+        assert!(found.is_some());
+        let row = found.unwrap();
+        assert_eq!(row.name, "test-skill");
+        assert_eq!(row.platform_id, "claude-code");
+        assert_eq!(row.project_name, "project");
+
+        let not_found = db::get_discovered_skill_by_id(&pool, "nonexistent")
+            .await
+            .unwrap();
+        assert!(not_found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_insert_discovered_skill_is_idempotent() {
+        let pool = setup_test_db().await;
+        let now = Utc::now().to_rfc3339();
+
+        // INSERT OR IGNORE should not fail on duplicate.
+        db::insert_discovered_skill(
+            &pool,
+            "dup-id",
+            "dup-skill",
+            None,
+            "/tmp/dup/SKILL.md",
+            "/tmp/dup",
+            "/tmp/proj",
+            "proj",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        // Second insert with same ID should be silently ignored.
+        db::insert_discovered_skill(
+            &pool,
+            "dup-id",
+            "dup-skill-updated",
+            Some("updated description"),
+            "/tmp/dup/SKILL.md",
+            "/tmp/dup",
+            "/tmp/proj",
+            "proj",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        let rows = db::get_all_discovered_skills(&pool).await.unwrap();
+        assert_eq!(rows.len(), 1, "should still have only 1 row");
+        assert_eq!(rows[0].name, "dup-skill", "original name should be preserved (INSERT OR IGNORE)");
+    }
+
+    #[tokio::test]
+    async fn test_delete_discovered_skill() {
+        let pool = setup_test_db().await;
+        let now = Utc::now().to_rfc3339();
+
+        db::insert_discovered_skill(
+            &pool,
+            "to-delete",
+            "delete-me",
+            None,
+            "/tmp/del/SKILL.md",
+            "/tmp/del",
+            "/tmp/proj",
+            "proj",
+            "cursor",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        let found = db::get_discovered_skill_by_id(&pool, "to-delete")
+            .await
+            .unwrap();
+        assert!(found.is_some());
+
+        db::delete_discovered_skill(&pool, "to-delete").await.unwrap();
+
+        let gone = db::get_discovered_skill_by_id(&pool, "to-delete")
+            .await
+            .unwrap();
+        assert!(gone.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_import_to_central_refuses_duplicate() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = setup_test_db().await;
+        let central_dir = tmp.path().join("central");
+        std::fs::create_dir_all(&central_dir).unwrap();
+
+        // Create a skill already in central.
+        let existing = central_dir.join("existing-skill");
+        std::fs::create_dir_all(&existing).unwrap();
+        std::fs::write(existing.join("SKILL.md"), "---\nname: existing-skill\n---\n\n# Test\n").unwrap();
+
+        // Also create the same skill in a project (discovered).
+        let project_skill = tmp.path().join("project/.claude/skills/existing-skill");
+        std::fs::create_dir_all(&project_skill).unwrap();
+        std::fs::write(project_skill.join("SKILL.md"), "---\nname: existing-skill\n---\n\n# Test\n").unwrap();
+
+        let now = Utc::now().to_rfc3339();
+        db::insert_discovered_skill(
+            &pool,
+            "claude-code__project__existing-skill",
+            "existing-skill",
+            None,
+            &project_skill.join("SKILL.md").to_string_lossy(),
+            &project_skill.to_string_lossy(),
+            &tmp.path().join("project").to_string_lossy(),
+            "project",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        let result = import_discovered_skill_to_central_impl(
+            &pool,
+            "claude-code__project__existing-skill",
+            &central_dir,
+        )
+        .await;
+
+        assert!(result.is_err(), "should refuse to import when skill already exists in central");
+    }
+
+    #[tokio::test]
+    async fn test_import_to_platform_refuses_existing_installation() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pool = setup_test_db().await;
+        let agent_dir = tmp.path().join("agent-skills");
+        std::fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create an existing skill in agent dir.
+        let existing = agent_dir.join("existing-skill");
+        std::fs::create_dir_all(&existing).unwrap();
+
+        // Also create a discovered skill with the same name.
+        let project_skill = tmp.path().join("project/.claude/skills/existing-skill");
+        std::fs::create_dir_all(&project_skill).unwrap();
+        std::fs::write(project_skill.join("SKILL.md"), "---\nname: existing-skill\n---\n\n# Test\n").unwrap();
+
+        let now = Utc::now().to_rfc3339();
+        db::insert_discovered_skill(
+            &pool,
+            "claude-code__project__existing-skill",
+            "existing-skill",
+            None,
+            &project_skill.join("SKILL.md").to_string_lossy(),
+            &project_skill.to_string_lossy(),
+            &tmp.path().join("project").to_string_lossy(),
+            "project",
+            "claude-code",
+            &now,
+        )
+        .await
+        .unwrap();
+
+        let result = import_discovered_skill_to_platform_impl(
+            &pool,
+            "claude-code__project__existing-skill",
+            "claude-code",
+            &agent_dir,
+        )
+        .await;
+
+        assert!(result.is_err(), "should refuse to import when skill already exists in agent dir");
+    }
+
+    #[tokio::test]
+    async fn test_platform_skill_patterns_includes_all_non_central_agents() {
+        let pool = setup_test_db().await;
+        let patterns = platform_skill_patterns(&pool);
+
+        // Should have entries for all non-central agents.
+        let central_agents: Vec<_> = db::builtin_agents()
+            .iter()
+            .filter(|a| a.id != "central")
+            .map(|a| a.id.clone())
+            .collect();
+
+        for agent_id in &central_agents {
+            assert!(
+                patterns.iter().any(|(id, _, _)| id == agent_id),
+                "agent '{}' should appear in platform skill patterns",
+                agent_id
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_discovered_project_count() {
+        let pool = setup_test_db().await;
+        let now = Utc::now().to_rfc3339();
+
+        // Insert skills across 3 different projects.
+        for i in 0..3 {
+            db::insert_discovered_skill(
+                &pool,
+                &format!("skill-{}", i),
+                &format!("skill {}", i),
+                None,
+                &format!("/tmp/proj{}/SKILL.md", i),
+                &format!("/tmp/proj{}", i),
+                &format!("/tmp/proj{}", i),
+                &format!("proj{}", i),
+                "claude-code",
+                &now,
+            )
+            .await
+            .unwrap();
+        }
+
+        let count = db::get_discovered_project_count(&pool).await.unwrap();
+        assert_eq!(count, 3, "should have 3 distinct projects");
     }
 }

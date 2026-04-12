@@ -84,6 +84,8 @@ pub fn run() {
             commands::settings::set_setting,
             // Discover
             commands::discover::discover_scan_roots,
+            commands::discover::get_scan_roots,
+            commands::discover::set_scan_root_enabled,
             commands::discover::start_project_scan,
             commands::discover::stop_project_scan,
             commands::discover::get_discovered_skills,
