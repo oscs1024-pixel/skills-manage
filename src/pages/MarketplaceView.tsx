@@ -32,7 +32,7 @@ import {
   SkillTag,
   RecommendedSkill,
 } from "@/data/officialSources";
-import { SkillPreviewDialog } from "@/components/marketplace/SkillPreviewDialog";
+import { MarketplaceSkillDetailDrawer, type MarketplaceSkillDetail } from "@/components/marketplace/MarketplaceSkillDetailDrawer";
 import { isTauriRuntime } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
@@ -49,17 +49,6 @@ type PreviewStatus =
   | { kind: "idle" }
   | { kind: "browser-fallback"; title: string; detail: string }
   | { kind: "error"; title: string; detail: string };
-
-type MarketplaceDetailSkill = {
-  id: string;
-  name: string;
-  downloadUrl: string;
-  description?: string;
-  publisher?: string;
-  sourceLabel?: string;
-  sourceUrl?: string | null;
-  installed?: boolean;
-};
 
 function parseDuplicateRegistryError(error: unknown): DuplicateRegistryDetails | null {
   const message = String(error);
@@ -243,7 +232,7 @@ export function MarketplaceView() {
   const [previewSkills, setPreviewSkills] = useState<PreviewSkill[]>([]);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewInstallingIds, setPreviewInstallingIds] = useState<Set<string>>(new Set());
-  const [detailSkill, setDetailSkill] = useState<MarketplaceDetailSkill | null>(null);
+  const [detailSkill, setDetailSkill] = useState<MarketplaceSkillDetail | null>(null);
   const [previewStatus, setPreviewStatus] = useState<PreviewStatus>({ kind: "idle" });
   const detailTriggerRef = useRef<HTMLElement | null>(null);
 
@@ -458,7 +447,7 @@ export function MarketplaceView() {
     }
   }
 
-  function openDetailSkill(skill: MarketplaceDetailSkill, trigger?: EventTarget | null) {
+  function openDetailSkill(skill: MarketplaceSkillDetail, trigger?: EventTarget | null) {
     if (trigger instanceof HTMLElement) {
       detailTriggerRef.current = trigger;
     }
@@ -1058,18 +1047,12 @@ export function MarketplaceView() {
         )}
       </div>
 
-      {/* Skill Detail Dialog */}
+      {/* Skill Detail Drawer */}
       {detailSkill && (
-        <SkillPreviewDialog
+        <MarketplaceSkillDetailDrawer
           open={!!detailSkill}
           onOpenChange={(open) => { if (!open) setDetailSkill(null); }}
-          description={detailSkill.description}
-          skillName={detailSkill.name}
-          downloadUrl={detailSkill.downloadUrl}
-          publisher={detailSkill.publisher}
-          sourceLabel={detailSkill.sourceLabel}
-          sourceUrl={detailSkill.sourceUrl}
-          installed={detailSkill.installed}
+          skill={detailSkill}
           onInstall={() => {
             if (detailSkill.id.startsWith("skill-")) {
               void handleInstallFromSource(detailSkill.id);

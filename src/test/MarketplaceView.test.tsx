@@ -365,6 +365,7 @@ describe("MarketplaceView", () => {
     expect(within(dialog).getByText(/Source/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/Repo One/i)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Install" })).toBeInTheDocument();
+    expect(within(dialog).getByTestId("skill-detail-right-sidebar")).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: /Open SKILL.md/i })).toHaveAttribute(
       "href",
       "https://example.com/skill-1"

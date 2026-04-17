@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useId } from "react";
+import { RefObject, ReactNode, useEffect, useId } from "react";
 import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
 import { SkillDetailView } from "@/components/skill/SkillDetailView";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ export interface SkillDetailDrawerProps {
   skillId: string | null;
   onOpenChange: (open: boolean) => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  children?: ReactNode;
 }
 
 export function SkillDetailDrawer({
@@ -17,6 +18,7 @@ export function SkillDetailDrawer({
   skillId,
   onOpenChange,
   returnFocusRef,
+  children,
 }: SkillDetailDrawerProps) {
   const titleId = useId();
 
@@ -59,13 +61,15 @@ export function SkillDetailDrawer({
                 </Button>
               </div>
               <div className="min-h-0 flex-1">
-                <SkillDetailView
-                  skillId={skillId}
-                  variant="drawer"
-                  leading={null}
-                  onRequestClose={() => onOpenChange(false)}
-                  titleId={titleId}
-                />
+                {children ?? (
+                  <SkillDetailView
+                    skillId={skillId}
+                    variant="drawer"
+                    leading={null}
+                    onRequestClose={() => onOpenChange(false)}
+                    titleId={titleId}
+                  />
+                )}
               </div>
             </div>
           </div>
