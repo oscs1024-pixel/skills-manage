@@ -385,8 +385,8 @@ export function GitHubRepoImportWizard({
         className="mt-2 rounded-xl border border-border/60 bg-muted/10 px-4 py-2.5"
         data-testid="github-import-repo-toolbar"
       >
-        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
-          <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+          <div className="min-w-0 space-y-1.5">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
                 {t("marketplace.githubImportToolbarLabel")}
@@ -407,7 +407,7 @@ export function GitHubRepoImportWizard({
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 self-start">
+          <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 lg:justify-end">
             <a
               href={previewToolbarRepoHref ?? "#"}
               target="_blank"
@@ -805,15 +805,20 @@ export function GitHubRepoImportWizard({
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-full flex-col gap-4">
+              <div className="flex min-h-full flex-col gap-4 overflow-hidden">
                 <div
-                  className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.45fr)] xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.52fr)]"
+                  className="grid min-h-0 flex-1 gap-4 overflow-hidden lg:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.45fr)] xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.52fr)]"
                   data-testid="github-import-preview-workspace"
                 >
-                  <div className="flex min-h-[22rem] flex-col overflow-hidden rounded-xl border border-border/70 bg-card/70">
+                  <div className="flex min-h-[22rem] min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/70 shadow-sm">
                     <div className="border-b border-border/60 px-4 py-3">
-                      <div className="text-sm font-semibold">
-                        {t("marketplace.githubImportSelectionTitle")}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-semibold">
+                          {t("marketplace.githubImportSelectionTitle")}
+                        </div>
+                        <span className="rounded-full border border-border/70 bg-background/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {preview.skills.length}
+                        </span>
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {t("marketplace.githubImportSelectionDesc", { count: preview.skills.length })}
@@ -895,31 +900,38 @@ export function GitHubRepoImportWizard({
                   </div>
 
                   <div
-                    className="flex min-h-[22rem] flex-col overflow-hidden rounded-xl border border-border/70 bg-card/80"
+                    className="flex min-h-[22rem] min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/80 shadow-sm"
                     data-testid="github-import-detail-pane"
                   >
                     {selectedPreviewSkill ? (
                       <>
-                        <div className="border-b border-border/60 px-5 py-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-base font-semibold">
-                              {selectedPreviewSkill.skillName}
+                        <div className="border-b border-border/60 bg-background/50 px-5 py-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-base font-semibold">
+                                  {selectedPreviewSkill.skillName}
+                                </div>
+                                <code className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                                  {selectedPreviewSkill.skillId}
+                                </code>
+                                {selectedPreviewSkill.conflict ? (
+                                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600">
+                                    {t("marketplace.conflictDetected")}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
+                                    {t("marketplace.readyToImport")}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="mt-2 break-all text-xs text-muted-foreground">
+                                {selectedPreviewSkill.sourcePath}
+                              </div>
                             </div>
-                            <code className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                              {selectedPreviewSkill.skillId}
-                            </code>
-                            {selectedPreviewSkill.conflict ? (
-                              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600">
-                                {t("marketplace.conflictDetected")}
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
-                                {t("marketplace.readyToImport")}
-                              </span>
-                            )}
-                          </div>
-                          <div className="mt-2 break-all text-xs text-muted-foreground">
-                            {selectedPreviewSkill.sourcePath}
+                            <div className="rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              {t("marketplace.githubImportToolbarLabel")}
+                            </div>
                           </div>
                           <div
                             className="mt-4 flex flex-wrap gap-2"

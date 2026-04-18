@@ -753,6 +753,7 @@ describe("MarketplaceView", () => {
     const toolbar = await screen.findByTestId("github-import-repo-toolbar");
     expect(toolbar.className).toContain("px-4");
     expect(toolbar.className).toContain("py-2.5");
+    expect(toolbar.firstElementChild?.className).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
     expect(within(toolbar).getByText(/Preview workspace|预览工作台/i)).toBeInTheDocument();
     expect(within(toolbar).getByText("anthropics/skills")).toBeInTheDocument();
     expect(within(toolbar).getByText("1 discovered skill(s)")).toBeInTheDocument();
@@ -1121,11 +1122,15 @@ describe("MarketplaceView", () => {
 
     const summaryList = await screen.findByTestId("github-import-summary-list");
     const detailScroll = screen.getByTestId("github-import-detail-scroll");
+    const detailPane = screen.getByTestId("github-import-detail-pane");
     const workspace = screen.getByTestId("github-import-preview-workspace");
 
     expect(summaryList.className).toContain("overflow-y-auto");
     expect(detailScroll.className).toContain("overflow-y-auto");
     expect(workspace.className).toContain("min-h-0");
+    expect(workspace.className).toContain("overflow-hidden");
+    expect(detailPane.className).toContain("overflow-hidden");
+    expect(detailPane.className).toContain("min-w-0");
   });
 
   it("offers post-import platform installation for imported github skills", async () => {
