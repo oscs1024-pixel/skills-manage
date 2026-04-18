@@ -158,6 +158,10 @@ export function GitHubRepoImportWizard({
     }
     return preview.skills[0] ?? null;
   }, [preview, selectedSkillPath]);
+  const previewToolbarRepoHref = useMemo(() => {
+    if (!preview) return null;
+    return `https://github.com/${preview.repo.owner}/${preview.repo.repo}`;
+  }, [preview]);
 
   const blockingConflict = useMemo(() => {
     return selectedSkills.find((skill) => {
@@ -389,7 +393,7 @@ export function GitHubRepoImportWizard({
 
           <div className="flex shrink-0 items-center gap-2">
             <a
-              href={`https://github.com/${currentPreview.repo.owner}/${currentPreview.repo.repo}`}
+              href={previewToolbarRepoHref ?? "#"}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -743,7 +747,10 @@ export function GitHubRepoImportWizard({
               </div>
             ) : (
               <div className="flex min-h-full flex-col gap-4">
-                <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.45fr)] xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.52fr)]">
+                <div
+                  className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.45fr)] xl:grid-cols-[minmax(360px,0.88fr)_minmax(0,1.52fr)]"
+                  data-testid="github-import-preview-workspace"
+                >
                   <div className="flex min-h-[22rem] flex-col overflow-hidden rounded-xl border border-border/70 bg-card/70">
                     <div className="border-b border-border/60 px-4 py-3">
                       <div className="text-sm font-semibold">
@@ -860,6 +867,7 @@ export function GitHubRepoImportWizard({
                         <div
                           ref={detailScrollRef}
                           className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4"
+                          data-testid="github-import-detail-scroll"
                         >
                           <div className="space-y-2">
                             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
