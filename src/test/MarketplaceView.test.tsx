@@ -695,22 +695,36 @@ describe("MarketplaceView", () => {
 
     await screen.findByTestId("github-import-preview-workspace");
 
+    const detailTabs = screen.getByTestId("github-import-detail-tabs");
+    const overviewTab = screen.getByTestId("github-import-detail-tab-overview");
+    const aiTab = screen.getByTestId("github-import-detail-tab-ai");
+    const optionsTab = screen.getByTestId("github-import-detail-tab-options");
+
+    expect(detailTabs).toBeInTheDocument();
+    expect(overviewTab).toHaveAttribute("aria-pressed", "true");
+    expect(aiTab).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByTestId("github-import-detail-panel-overview")).toBeInTheDocument();
     expect(screen.getByTestId("github-import-summary-list")).toBeInTheDocument();
     expect(screen.getByTestId("github-import-shell-footer")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId("github-import-detail-tab-ai"));
+    fireEvent.click(aiTab);
     expect(screen.getByTestId("github-import-detail-panel-ai")).toBeInTheDocument();
     expect(screen.queryByTestId("github-import-detail-panel-overview")).not.toBeInTheDocument();
+    expect(overviewTab).toHaveAttribute("aria-pressed", "false");
+    expect(aiTab).toHaveAttribute("aria-pressed", "true");
+    expect(optionsTab).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText(/Why this skill matters|为什么值得导入/i)).toBeInTheDocument();
     expect(screen.getByText(/AI import summary|AI 导入摘要/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTestId("github-import-detail-tab-options"));
+    fireEvent.click(optionsTab);
     expect(screen.getByTestId("github-import-detail-panel-options")).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Overwrite" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Overwrite|覆盖/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Review import|检查导入内容/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /First Skill/i })).toBeInTheDocument();
     expect(screen.getByText(/Conflict options|冲突选项/i)).toBeInTheDocument();
+    expect(overviewTab).toHaveAttribute("aria-pressed", "false");
+    expect(aiTab).toHaveAttribute("aria-pressed", "false");
+    expect(optionsTab).toHaveAttribute("aria-pressed", "true");
   });
 
   it("slims the github preview repo toolbar into a dense two-row summary", async () => {

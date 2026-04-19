@@ -948,6 +948,7 @@ export function GitHubRepoImportWizard({
                                 key={tabId}
                                 type="button"
                                 onClick={() => setDetailTab(tabId)}
+                                aria-pressed={detailTab === tabId}
                                 className={cn(
                                   "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                                   detailTab === tabId
