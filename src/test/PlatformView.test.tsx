@@ -196,6 +196,7 @@ function buildPlatformStoreState(overrides = {}) {
     skillsByAgent: { "claude-code": 2 },
     isLoading: false,
     isRefreshing: false,
+    scanGeneration: 1,
     error: null,
     initialize: vi.fn(),
     rescan: vi.fn(),
@@ -617,6 +618,83 @@ describe("PlatformView", () => {
     });
 
     expect(userTrigger).toHaveFocus();
+  });
+
+  it("re-fetches the live Claude list after a scan generation change and removes stale duplicate rows without clearing the search query", async () => {
+    let platformState = buildPlatformStoreState({
+      scanGeneration: 1,
+      skillsByAgent: { "claude-code": 2 },
+    });
+    let skillState = buildSkillStoreState({
+      skillsByAgent: { "claude-code": mockDuplicateClaudeSkillsWithDistinctIds },
+    });
+
+    mockUsePlatformStore.mockImplementation((selector?: unknown) => {
+      if (typeof selector === "function") return selector(platformState);
+      return platformState;
+    });
+    mockUseSkillStore.mockImplementation((selector?: unknown) => {
+      if (typeof selector === "function") return selector(skillState);
+      return skillState;
+    });
+
+    const view = renderPlatformView();
+
+    const searchInput = screen.getByPlaceholderText(/搜索技能/);
+    fireEvent.change(searchInput, { target: { value: "shared-skill-id" } });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: /查看 Shared skill 的详情/i })
+      ).toHaveLength(2);
+    });
+
+    mockGetSkillsByAgent.mockClear();
+
+    platformState = buildPlatformStoreState({
+      scanGeneration: 2,
+      skillsByAgent: { "claude-code": 2 },
+    });
+    skillState = buildSkillStoreState({
+      skillsByAgent: {
+        "claude-code": [
+          mockDuplicateClaudeSkillsWithDistinctIds[1],
+          {
+            id: "other-skill",
+            name: "Other skill",
+            description: "Non-matching survivor",
+            file_path: "~/.claude/skills/other-skill/SKILL.md",
+            dir_path: "~/.claude/skills/other-skill",
+            link_type: "native",
+            is_central: false,
+            source_kind: "user",
+            source_root: "~/.claude/skills",
+            is_read_only: false,
+          },
+        ],
+      },
+    });
+
+    view.rerender(
+      <MemoryRouter initialEntries={["/platform/claude-code"]}>
+        <Routes>
+          <Route path="/platform/:agentId" element={<PlatformView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(mockGetSkillsByAgent).toHaveBeenCalledWith("claude-code");
+    });
+
+    expect(searchInput).toHaveValue("shared-skill-id");
+    expect(
+      screen.getAllByRole("button", { name: /查看 Shared skill 的详情/i })
+    ).toHaveLength(1);
+    expect(screen.queryByText(userSourceText)).not.toBeInTheDocument();
+    expect(screen.getByText(marketplaceSourceText)).toBeInTheDocument();
+    expect(screen.getByText(readOnlyText)).toBeInTheDocument();
+    expect(screen.queryByText("Other skill")).not.toBeInTheDocument();
   });
 
   it("resets the platform content scroll when navigating to another platform", async () => {

@@ -51,6 +51,7 @@ describe("platformStore", () => {
       skillsByAgent: {},
       isLoading: false,
       isRefreshing: false,
+      scanGeneration: 0,
       error: null,
     });
     vi.clearAllMocks();
@@ -64,6 +65,7 @@ describe("platformStore", () => {
     expect(state.skillsByAgent).toEqual({});
     expect(state.isLoading).toBe(false);
     expect(state.isRefreshing).toBe(false);
+    expect(state.scanGeneration).toBe(0);
     expect(state.error).toBeNull();
   });
 
@@ -100,6 +102,7 @@ describe("platformStore", () => {
     expect(state.agents).toEqual(mockAgents);
     expect(state.skillsByAgent).toEqual(mockScanResult.skills_by_agent);
     expect(state.isLoading).toBe(false);
+    expect(state.scanGeneration).toBe(1);
     expect(state.error).toBeNull();
   });
 
@@ -135,6 +138,7 @@ describe("platformStore", () => {
       skillsByAgent: { "claude-code": 2 },
       isLoading: false,
       isRefreshing: false,
+      scanGeneration: 1,
       error: null,
     });
 
@@ -153,6 +157,7 @@ describe("platformStore", () => {
     const state = usePlatformStore.getState();
     expect(state.skillsByAgent["claude-code"]).toBe(7);
     expect(state.isLoading).toBe(false);
+    expect(state.scanGeneration).toBe(2);
     expect(state.error).toBeNull();
   });
 
@@ -172,6 +177,7 @@ describe("platformStore", () => {
       skillsByAgent: { "claude-code": 2, central: 3 },
       isLoading: false,
       isRefreshing: false,
+      scanGeneration: 1,
       error: null,
     });
 
@@ -195,5 +201,6 @@ describe("platformStore", () => {
     expect(state.skillsByAgent).toEqual(updatedScanResult.skills_by_agent);
     expect(state.isLoading).toBe(false);
     expect(state.isRefreshing).toBe(false);
+    expect(state.scanGeneration).toBe(2);
   });
 });

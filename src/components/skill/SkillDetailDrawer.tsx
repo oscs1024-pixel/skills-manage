@@ -1,4 +1,4 @@
-import { RefObject, ReactNode, useEffect, useId } from "react";
+import { RefObject, ReactNode, useEffect, useId, useRef } from "react";
 import {
   Dialog,
   DialogClose,
@@ -38,12 +38,22 @@ export function SkillDetailDrawer({
 }: SkillDetailDrawerProps) {
   const titleId = useId();
   const showContent = open && (skillId !== null || filePath != null || children != null);
+  const lastReturnFocusRef = useRef<RefObject<HTMLElement | null> | null>(null);
+
+  useEffect(() => {
+    if (returnFocusRef) {
+      lastReturnFocusRef.current = returnFocusRef;
+    }
+  }, [returnFocusRef]);
 
   useEffect(() => {
     if (open) {
       return;
     }
-    const target = returnFocusRef?.current ?? document.body;
+    const target =
+      returnFocusRef?.current ??
+      lastReturnFocusRef.current?.current ??
+      document.body;
     target?.focus?.();
   }, [open, returnFocusRef]);
 

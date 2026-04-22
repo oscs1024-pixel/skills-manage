@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { GlobalSearchDialog } from "./GlobalSearchDialog";
 import { usePlatformStore } from "@/stores/platformStore";
-import { useDiscoverStore } from "@/stores/discoverStore";
 
 /**
  * Top-level app shell: TopBar + icon sidebar + scrollable main content area.
@@ -12,19 +11,26 @@ import { useDiscoverStore } from "@/stores/discoverStore";
  */
 export function AppShell() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const { pathname } = useLocation();
 
   const initialize = usePlatformStore((s) => s.initialize);
-  const startScan = useDiscoverStore((s) => s.startScan);
+  const rescan = usePlatformStore((s) => s.rescan);
 
   useEffect(() => {
     initialize();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!mainRef.current) return;
+    mainRef.current.scrollTop = 0;
+  }, [pathname]);
+
   function handleAction(action: string) {
     switch (action) {
       case "rescan":
-        startScan();
+        void rescan();
         break;
     }
   }
@@ -34,7 +40,7 @@ export function AppShell() {
       <TopBar onSearchClick={() => setIsSearchOpen(true)} />
       <div className="flex flex-1 min-h-0">
         <Sidebar />
-        <main className="flex-1 overflow-auto min-w-0">
+        <main ref={mainRef} className="flex-1 min-h-0 min-w-0 overflow-hidden">
           <Outlet />
         </main>
       </div>

@@ -32,6 +32,7 @@ export function PlatformView() {
   const { agentId } = useParams<{ agentId: string }>();
   const { t } = useTranslation();
   const agents = usePlatformStore((state) => state.agents);
+  const scanGeneration = usePlatformStore((state) => state.scanGeneration ?? 0);
 
   const skillsByAgent = useSkillStore((state) => state.skillsByAgent);
   const loadingByAgent = useSkillStore((state) => state.loadingByAgent);
@@ -48,15 +49,20 @@ export function PlatformView() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [drawerSkill, setDrawerSkill] = useState<ScannedSkill | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [returnFocusRowKey, setReturnFocusRowKey] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const detailButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
-  // Load skills for this agent when agentId changes
+  function getSkillRowKey(skill: ScannedSkill) {
+    return skill.row_id ?? skill.id;
+  }
+
+  // Load skills for this agent when the route changes or a fresh scan completes.
   useEffect(() => {
     if (agentId) {
       getSkillsByAgent(agentId);
     }
-  }, [agentId, getSkillsByAgent]);
+  }, [agentId, getSkillsByAgent, scanGeneration]);
 
   useEffect(() => {
     if (!contentRef.current) return;
@@ -117,15 +123,33 @@ export function PlatformView() {
     );
   }, [skills, searchQuery]);
 
-  function getSkillRowKey(skill: ScannedSkill) {
-    return skill.row_id ?? skill.id;
-  }
+  useEffect(() => {
+    if (!drawerSkill) return;
+
+    const rowKey = getSkillRowKey(drawerSkill);
+    const refreshedSkill = skills.find((skill) => getSkillRowKey(skill) === rowKey);
+
+    if (!refreshedSkill) {
+      setIsDrawerOpen(false);
+      setDrawerSkill(null);
+      return;
+    }
+
+    if (refreshedSkill !== drawerSkill) {
+      setDrawerSkill(refreshedSkill);
+    }
+  }, [drawerSkill, skills]);
 
   function setDetailButtonRef(rowKey: string, node: HTMLButtonElement | null) {
-    detailButtonRefs.current[rowKey] = node;
+    if (node) {
+      detailButtonRefs.current[rowKey] = node;
+      return;
+    }
+    delete detailButtonRefs.current[rowKey];
   }
 
   function handleOpenDrawer(skill: ScannedSkill) {
+    setReturnFocusRowKey(getSkillRowKey(skill));
     setDrawerSkill(skill);
     setIsDrawerOpen(true);
   }
@@ -220,9 +244,9 @@ export function PlatformView() {
           }
         }}
         returnFocusRef={
-          drawerSkill
+          returnFocusRowKey
             ? {
-                current: detailButtonRefs.current[getSkillRowKey(drawerSkill)] ?? null,
+                current: detailButtonRefs.current[returnFocusRowKey] ?? null,
               }
             : undefined
         }

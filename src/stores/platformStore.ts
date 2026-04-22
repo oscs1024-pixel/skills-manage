@@ -49,6 +49,7 @@ interface PlatformState {
   skillsByAgent: Record<string, number>;
   isLoading: boolean;
   isRefreshing: boolean;
+  scanGeneration?: number;
   error: string | null;
 
   // Actions
@@ -64,6 +65,7 @@ export const usePlatformStore = create<PlatformState>((set) => ({
   skillsByAgent: {},
   isLoading: false,
   isRefreshing: false,
+  scanGeneration: 0,
   error: null,
 
   /**
@@ -73,11 +75,12 @@ export const usePlatformStore = create<PlatformState>((set) => ({
   initialize: async () => {
     set({ isLoading: true, error: null });
     if (!isTauriRuntime()) {
-      set({
+      set((state) => ({
         agents: BROWSER_FIXTURE_AGENTS,
         skillsByAgent: BROWSER_FIXTURE_COUNTS.skills_by_agent,
         isLoading: false,
-      });
+        scanGeneration: (state.scanGeneration ?? 0) + 1,
+      }));
       return;
     }
     try {
@@ -85,11 +88,12 @@ export const usePlatformStore = create<PlatformState>((set) => ({
         invoke<AgentWithStatus[]>("get_agents"),
         invoke<ScanResult>("scan_all_skills"),
       ]);
-      set({
+      set((state) => ({
         agents,
         skillsByAgent: scanResult.skills_by_agent,
         isLoading: false,
-      });
+        scanGeneration: (state.scanGeneration ?? 0) + 1,
+      }));
     } catch (err) {
       set({ error: String(err), isLoading: false });
     }
@@ -102,11 +106,12 @@ export const usePlatformStore = create<PlatformState>((set) => ({
   rescan: async () => {
     set({ isLoading: true, error: null });
     if (!isTauriRuntime()) {
-      set({
+      set((state) => ({
         agents: BROWSER_FIXTURE_AGENTS,
         skillsByAgent: BROWSER_FIXTURE_COUNTS.skills_by_agent,
         isLoading: false,
-      });
+        scanGeneration: (state.scanGeneration ?? 0) + 1,
+      }));
       return;
     }
     try {
@@ -114,11 +119,12 @@ export const usePlatformStore = create<PlatformState>((set) => ({
         invoke<AgentWithStatus[]>("get_agents"),
         invoke<ScanResult>("scan_all_skills"),
       ]);
-      set({
+      set((state) => ({
         agents,
         skillsByAgent: scanResult.skills_by_agent,
         isLoading: false,
-      });
+        scanGeneration: (state.scanGeneration ?? 0) + 1,
+      }));
     } catch (err) {
       set({ error: String(err), isLoading: false });
     }
@@ -132,6 +138,7 @@ export const usePlatformStore = create<PlatformState>((set) => ({
         skillsByAgent: BROWSER_FIXTURE_COUNTS.skills_by_agent,
         isRefreshing: false,
         isLoading: state.isLoading,
+        scanGeneration: (state.scanGeneration ?? 0) + 1,
       }));
       return;
     }
@@ -145,6 +152,7 @@ export const usePlatformStore = create<PlatformState>((set) => ({
         skillsByAgent: scanResult.skills_by_agent,
         isRefreshing: false,
         isLoading: state.isLoading,
+        scanGeneration: (state.scanGeneration ?? 0) + 1,
       }));
     } catch (err) {
       set({ error: String(err), isRefreshing: false });
