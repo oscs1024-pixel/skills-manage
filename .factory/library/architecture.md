@@ -121,9 +121,10 @@ Without these, the list and detail surfaces cannot keep duplicate-source rows di
 
 ### Claude platform list
 1. `PlatformView` loads Claude rows for `claude-code`
-2. Returned rows must remain distinct even when duplicate logical skills exist across sources
-3. UI renders source badge + read-only state + row-specific actions
-4. Search filters rendered rows, not a deduplicated logical projection
+2. `全部` is the default source-tab view and shows both source types together
+3. The active source tab filters the source-aware Claude rows before any text search runs
+4. Search filters only the rows that remain visible inside the active source tab, not a deduplicated logical projection
+5. UI renders source badge + read-only state + row-specific actions within the filtered row set
 
 ### Claude detail
 1. User opens a specific row from the Claude platform list

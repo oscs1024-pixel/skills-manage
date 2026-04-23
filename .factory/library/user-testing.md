@@ -12,6 +12,7 @@ Testing surface, required tools, and validation constraints for the Claude multi
 ### Secondary automated surface: targeted tests
 - Rust targeted tests for scanner/query/linker behavior
 - Vitest targeted tests for `PlatformView`, `SkillDetailView`, `platformStore`, and `skillDetailStore`
+- For the source-tab follow-up, extend `PlatformView`-focused tests to prove `全部 / 用户来源 / 市场来源` switching plus tab-scoped search composition
 - `pnpm typecheck` and `pnpm lint`
 
 ## Fixture Strategy
@@ -66,6 +67,7 @@ Mission limit:
 For contract assertions on the native Tauri surface, capture:
 - sidebar/platform screenshots
 - list screenshots with source/read-only markers
+- source-tab screenshots for `全部`, `用户来源`, and `市场来源`
 - detail screenshots with rooted path and action affordances
 - before/after screenshots for rescan flows
 - brief notes for any disabled/blocked management action checks
@@ -76,6 +78,7 @@ For contract assertions on the native Tauri surface, capture:
 - Use repeated-skill fixtures when validating duplicate-source behavior; distinct-name fixtures are insufficient
 - For backend/frontend compatibility fixes that unblock scrutiny before the full Claude UX lands, a native launch/count smoke check is acceptable for that fix feature; the full duplicate-row click-through remains owned by later Claude UX features and final user-testing validation.
 - For command-palette or global-search flows, prefer validating the underlying state transition with targeted tests first; native Tauri evidence may use launch/screenshot confirmation plus documented macOS accessibility limits when the command-palette surface is not reliably scriptable.
+- For the Claude source-tab follow-up, validators must prove the active tab hides opposite-source rows before search is applied, and that search does not re-surface rows excluded by the selected tab.
 
 ## Native macOS Tauri Recipe
 
